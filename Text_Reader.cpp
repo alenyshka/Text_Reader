@@ -12,6 +12,8 @@
 #include "Bitmap.h"
 #include "Char.h"
 #include <vector>
+#include "Commctrl.h"
+#pragma comment (lib, "comctl32.lib")
 
 #define MAX_LOADSTRING 100
 
@@ -112,6 +114,63 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 //
 //  PURPOSE: Registers the window class.
 //
+
+static HIMAGELIST g_hImageList = NULL;
+
+HWND CreateSimpleToolbar(HWND hWndParent)
+{
+	// Declare and initialize local constants.
+	const int ImageListID = 0;
+	const int numButtons = 5;
+	const int bitmapSize = 16;
+
+	const DWORD buttonStyles = BTNS_AUTOSIZE;
+
+	// Create the toolbar.
+	HWND hWndToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL,
+		WS_CHILD | TBSTYLE_WRAPABLE, 0, 0, 0, 0, hWndParent, NULL, hInst, NULL);
+
+	if (hWndToolbar == NULL)
+		return NULL;
+
+	// Create the image list.
+	g_hImageList = ImageList_Create(bitmapSize, bitmapSize,   // Dimensions of individual bitmaps.
+		ILC_COLOR16 | ILC_MASK,   // Ensures transparent background.
+		numButtons, 0);
+
+	// Set the image list.
+	SendMessage(hWndToolbar, TB_SETIMAGELIST,
+		(WPARAM)ImageListID,
+		(LPARAM)g_hImageList);
+
+	// Load the button images.
+	SendMessage(hWndToolbar, TB_LOADIMAGES,
+		(WPARAM)IDB_STD_SMALL_COLOR,
+		(LPARAM)HINST_COMMCTRL);
+
+	// Initialize button info.
+	// IDM_NEW, IDM_OPEN, and IDM_SAVE are application-defined command constants.
+
+	TBBUTTON tbButtons[numButtons] =
+	{
+		{ MAKELONG(STD_FILENEW, ImageListID), ID_FILE_NEW, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"New" },
+		{ MAKELONG(STD_FILEOPEN, ImageListID), ID_FILE_OPEN, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"Open" },
+		{ MAKELONG(STD_FILESAVE, ImageListID), ID_FILE_SAVE, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"Save" },
+		{ MAKELONG(STD_PRINT, ImageListID), ID_FILE_PRINT, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"Print" },
+		{ MAKELONG(STD_HELP, ImageListID), IDM_ABOUT, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"Help" }
+	};
+
+	// Add buttons.
+	SendMessage(hWndToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
+	SendMessage(hWndToolbar, TB_ADDBUTTONS, (WPARAM)numButtons, (LPARAM)&tbButtons);
+
+	// Resize the toolbar, and then show it.
+	SendMessage(hWndToolbar, TB_AUTOSIZE, 0, 0);
+	ShowWindow(hWndToolbar, TRUE);
+
+	return hWndToolbar;
+}
+
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
 	WNDCLASSEX wcex;
@@ -182,6 +241,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_CREATE:
 		CreateTextEditorWindow(hWnd, rect);
+		CreateSimpleToolbar(hWnd);
+		break;
 	case WM_COMMAND:
 		wmId = LOWORD(wParam);
 		wmEvent = HIWORD(wParam);
@@ -556,7 +617,7 @@ HWND CreateTextEditorWindow(HWND hWnd, RECT rect)
 	HDC hdc = GetDC(hWnd);
 	GetClientRect(hWnd, &rect);
 	widthWindow = rect.right - rect.left;
-	heightWindow = rect.bottom - rect.top;
+	heightWindow = rect.bottom - rect.top - 16;
 	return hWnd;
 }
 
