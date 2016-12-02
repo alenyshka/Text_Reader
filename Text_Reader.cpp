@@ -13,6 +13,9 @@
 #include "Char.h"
 #include <vector>
 #include "Commctrl.h"
+#include <iostream>
+#include <fstream>
+
 #pragma comment (lib, "comctl32.lib")
 
 #define MAX_LOADSTRING 100
@@ -27,6 +30,7 @@ void repaintWindow(HWND hWnd);
 int	getWindowWidth(HWND hWnd);
 int	getWindowHeight(HWND hWnd);
 HWND CreateTextEditorWindow(HWND, RECT);
+WCHAR GetText(TCHAR *lpszText, DWORD size);
 
 
 BOOL OpenFile(HWND, OPENFILENAME);
@@ -38,11 +42,8 @@ INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
 VOID print_glyphs(HWND hWnd);
 void ToCreateCaret(HWND hWnd);
 void Save(HWND hWnd);
-
+int Open(HWND hWnd);
 HWND New(HWND hWnd, RECT rect);
-
-
-
 
 
 // Global Variables:
@@ -253,7 +254,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case ID_FILE_NEW:
 			New(hWnd, rect);
 			break;
-		case ID_FILE_OPEN:					
+		case ID_FILE_OPEN:	
+			Open(hWnd);
 			break;
 		case ID_FILE_SAVE:
 			Save(hWnd);
@@ -343,7 +345,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				++CarriagePosition;
 				InvalidateRect(hWnd, NULL, true);
-				//SendMessage(hWnd, WM_PAINT, wParam, lParam);
 			}
 			break;
 		case VK_TAB:				//tab
@@ -404,8 +405,10 @@ VOID print_glyphs(HWND hWnd)
 {
 	HDC hDC = BeginPaint(hWnd, &ps);
 	CarriagePosition--;
+
 	int summWidth = 0, height = 0, maxHeight = 0; count_string = 0; widthPositionCarret = 0;
-	for (std::list<Glyph*>::iterator itemList = ++glyph_list.begin(); itemList != glyph_list.end(); itemList++)
+	std::list<Glyph*>::iterator itemList;
+	for (itemList = ++glyph_list.begin(); itemList != glyph_list.end(); itemList++)
 	{
 		Glyph * symbol = *itemList;
 		if (((summWidth + symbol->getWidth()) > widthWindow) || (symbol->getWidth() == -1))
@@ -419,7 +422,9 @@ VOID print_glyphs(HWND hWnd)
 			maxHeight = 0;
 			widthPositionCarret = 0;
 		}
-		symbol->draw(hDC, summWidth, height, font);
+		
+		symbol->draw(hDC, summWidth, 45 + height, font);
+		
 		if (symbol->getWidth() > 0)
 			summWidth += symbol->getWidth();
 		if (maxHeight < symbol->getHeight())
@@ -428,7 +433,7 @@ VOID print_glyphs(HWND hWnd)
 		{
 			heightPositionCarret = count_string;
 			widthPositionCarret = summWidth;
-			SetCaretPos(summWidth, height);
+			SetCaretPos(summWidth, 45 + height);
 		}
 	}
 	CarriagePosition++;
@@ -573,21 +578,19 @@ int backspace(HWND hWnd)
 void ToCreateCaret(HWND hWnd)
 {
 	CreateCaret(hWnd, (HBITMAP)0, 2, size + 2);
-	SetCaretPos(0, 0);
+	SetCaretPos(0, 45);
 	ShowCaret(hWnd);
 }
 
 void repaintWindow(HWND hWnd)
 {
+	
 	GetClientRect(hWnd, &rect);
 	heightWindow = rect.bottom - rect.top;
 	widthWindow = rect.right - rect.left;
 	print_glyphs(hWnd);
 }
 
-BOOL OpenFile(HWND hWnd, OPENFILENAME ofn){
-	return false;
-}
 
 HFONT setFont(LPCWSTR font, int size){
 	 HFONT hFont = CreateFont(size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
@@ -599,12 +602,14 @@ HFONT setFont(LPCWSTR font, int size){
 int getWindowWidth(HWND hWnd)
 {
 	GetClientRect(hWnd, &rect);
+	//SetRect(&rect, 0, 16, 100, 100);
 	return rect.right - rect.left;
 }
 
 int getWindowHeight(HWND hWnd)
 {
 	GetClientRect(hWnd, &rect);
+	//SetRect(&rect, 0, 16, 100, 100);
 	return rect.bottom - rect.top;
 }
 
@@ -616,8 +621,10 @@ HWND CreateTextEditorWindow(HWND hWnd, RECT rect)
 	ShowWindow(hWnd, SW_MAXIMIZE);
 	HDC hdc = GetDC(hWnd);
 	GetClientRect(hWnd, &rect);
+	//SetRect(&rect, 0, 16, 100, 100);
 	widthWindow = rect.right - rect.left;
-	heightWindow = rect.bottom - rect.top - 16;
+	//rect.top = 16;
+	heightWindow = rect.bottom - rect.top;
 	return hWnd;
 }
 
@@ -627,26 +634,97 @@ HWND New(HWND hWnd, RECT rect)
 	glyph_list.clear();
 	InvalidateRect(hWnd, NULL, true);
 	ShowWindow(hWnd, SW_MAXIMIZE);
-	CarriagePosition = glyph_list.begin();
 	glyph_list.insert(CarriagePosition, new Char(-1, font, 0x0D, color, false));
+	SetCaretPos(0, 45);
 	return hWnd;
 }
 
-void Save(HWND h)
+void Save(HWND hWnd)
 {
 	ofn.lStructSize = sizeof(OPENFILENAME);
-	ofn.hwndOwner = h;
+	ofn.hwndOwner = hWnd;
 	ofn.hInstance = hInst;
-	ofn.lpstrFilter = (LPCWSTR)"TXT (*.txt)\0*.txt\0Все файлы (*.*)\0*.*\0";
+	ofn.lpstrFilter = __TEXT("Текстовый файл (*.txt)\0*.txt\0\0");
 	ofn.nFilterIndex = 1;
 	ofn.lpstrFile = (LPWSTR)fullpath;
 	ofn.nMaxFile = sizeof(fullpath);
 	ofn.lpstrFileTitle = (LPWSTR)filename;
 	ofn.nMaxFileTitle = sizeof(filename);
 	ofn.lpstrInitialDir = (LPCWSTR)dir;
-	ofn.lpstrTitle = (LPCWSTR)"Save file as...";
+	ofn.lpstrTitle = __TEXT("Save file as...");
+	ofn.lpstrDefExt = __TEXT("txt");
 	ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY | OFN_EXPLORER;
 	if (GetSaveFileName(&ofn))
 	{
+		DWORD dwTextSize = glyph_list.size();
+		TCHAR *lpszText = new TCHAR[dwTextSize]{NULL};
+		*lpszText = GetText(lpszText, dwTextSize + 1);
+		
+		HANDLE hTextFile = CreateFile((LPWSTR)fullpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		DWORD dwBytesWritten;
+		WriteFile(hTextFile, (LPCVOID)lpszText, 2 * dwTextSize, &dwBytesWritten, NULL);  // x2 for 2 bytes per Unicode character
+		CloseHandle(hTextFile);
+		DeleteObject(hTextFile);
 	}
+}
+
+WCHAR GetText(TCHAR *lpszText, DWORD size)
+{
+	std::list<Glyph*>::iterator itemList = glyph_list.begin();
+	int i = 0;
+	while (!(++itemList == glyph_list.end()))
+	{
+		Glyph * symbol = *itemList;
+		lpszText[i++] = (TCHAR)(symbol);
+		
+	}
+	return *lpszText;
+}
+
+int Open(HWND hWnd)
+{
+	New(hWnd, rect);
+	GetClientRect(hWnd, &rect);
+	
+	ofn.lStructSize = sizeof(OPENFILENAME);
+	ofn.hwndOwner = hWnd;
+	ofn.hInstance = hInst;
+	ofn.lpstrFilter = __TEXT("Текстовый файл (*.txt)\0*.txt\0\0");
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFile = (LPWSTR)fullpath;
+	ofn.nMaxFile = sizeof(fullpath);
+	ofn.lpstrFileTitle = (LPWSTR)filename;
+	ofn.nMaxFileTitle = sizeof(filename);
+	ofn.lpstrInitialDir = (LPCWSTR)dir;
+	ofn.lpstrTitle = __TEXT("Open...");
+	ofn.lpstrDefExt = __TEXT("txt");//расширение по умолчанию 
+	//ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY | OFN_EXPLORER;
+	if (GetOpenFileName(&ofn))
+	{
+		HANDLE hFile = CreateFile((LPWSTR)fullpath, GENERIC_READ, 0, NULL, OPEN_EXISTING,//Открытие файла 
+			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+
+		if (hFile == INVALID_HANDLE_VALUE)
+		{
+			MessageBox(hWnd, __TEXT("Ошибка открытия файла"), __TEXT("Ошибка! "), MB_OK | MB_ICONSTOP);
+			return 0;
+		}
+		DWORD SizeFile = GetFileSize(hFile, NULL), buffer = NULL;//Получить размер файла 
+		TCHAR lpBuffer[6]{NULL};
+		bool result = ReadFile(hFile, (LPVOID)lpBuffer, SizeFile, (LPDWORD)buffer, NULL);
+		if (result == false)
+		{
+			MessageBox(hWnd, __TEXT("Ошибка чтения файла! "), __TEXT("") + GetLastError(), MB_OK | MB_ICONSTOP);
+			return -1;
+		}
+		CloseHandle(hFile);
+		for (int i = 0; i < SizeFile; i++)
+		{
+			glyph_list.insert(CarriagePosition, new Char(size, font, lpBuffer[i], color, false));
+		}
+	}
+
+	
+	InvalidateRect(hWnd, NULL, true);
+	return 0;
 }
