@@ -19,6 +19,8 @@
 #pragma comment (lib, "comctl32.lib")
 
 #define MAX_LOADSTRING 100
+#define CORRECT_CARET_POSITION 45
+#define WIDTH_SCROOL 20
 
 
 
@@ -31,6 +33,8 @@ int	getWindowWidth(HWND hWnd);
 int	getWindowHeight(HWND hWnd);
 HWND CreateTextEditorWindow(HWND, RECT);
 WCHAR GetText(TCHAR *lpszText, DWORD size);
+bool keydown(int key);
+void insert_tab();
 
 
 BOOL OpenFile(HWND, OPENFILENAME);
@@ -44,6 +48,7 @@ void ToCreateCaret(HWND hWnd);
 void Save(HWND hWnd);
 int Open(HWND hWnd);
 HWND New(HWND hWnd, RECT rect);
+void Print(HWND h, int x1, int x2, int y1, int y2);
 
 
 // Global Variables:
@@ -53,17 +58,27 @@ TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
 
 int	wmId, wmEvent, size = 20, heightPositionCarret = 0, count_string = 0, widthPositionCarret = 0, widthWindow, heightWindow;
 HDC static hdc;
+
 static OPENFILENAME ofn;
-static char fullpath[256], filename[256], dir[256];
-RECT rect;
 static HFONT font = CreateFont(size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
-	CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));;
-COLORREF color = RGB(0, 0, 0);
-//LPCWSTR					TimesNewRoman = L"Times New Roman";
+	CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));
+static char fullpath[256], filename[256], dir[256];
+
+RECT rect;
+
+static DOCINFO di;
+PRINTDLG pd;
+
 std::list<Glyph*> glyph_list;
 std::list<Glyph*>::iterator CarriagePosition;
-PAINTSTRUCT ps;
 
+PAINTSTRUCT ps;
+COLORREF color = RGB(0, 0, 0);
+
+int WndWidth, WndHeight;
+HWND ed, scr;
+static int nScrollPos;
+SCROLLINFO si = { sizeof(SCROLLINFO), SIF_PAGE | SIF_POS | SIF_RANGE | SIF_TRACKPOS, 1, 20, 0, 0, 0 };
 // Forward declarations of functions included in this code module:
 ATOM				MyRegisterClass(HINSTANCE hInstance);
 BOOL				InitInstance(HINSTANCE, int);
@@ -172,6 +187,33 @@ HWND CreateSimpleToolbar(HWND hWndParent)
 	return hWndToolbar;
 }
 
+HWND CreateAVerticalScrollBar(HWND hwndParent, int sbHeight)
+{
+	RECT rect;
+
+	// Get the dimensions of the parent window's client area;
+	if (!GetClientRect(hwndParent, &rect))
+		return NULL;
+	HWND scroll = CreateWindowEx(
+		0,                      // no extended styles 
+		L"SCROLLBAR",           // scroll bar control class 
+		(PTSTR)NULL,           // no window text 
+		WS_CHILD | WS_VISIBLE   // window styles  
+		| SBS_VERT,         // vertical scroll bar style 
+		rect.right - WIDTH_SCROOL,              // horizontal position 
+		CORRECT_CARET_POSITION,  // vertical position 
+		sbHeight,             // width of the scroll bar 
+		rect.bottom - rect.top - CORRECT_CARET_POSITION,               // height of the scroll bar
+		hwndParent,             // handle to main window 
+		(HMENU)NULL,           // no menu 
+		hInst,                // instance owning this window 
+		(PVOID)NULL            // pointer not needed 
+		);
+	// Create the scroll bar.
+	// SetScrollRange(scroll, SB_VERT, 1,	20,	TRUE);
+	return scroll;
+}
+
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
 	WNDCLASSEX wcex;
@@ -203,6 +245,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //        In this function, we save the instance handle in a global variable and
 //        create and display the main program window.
 //
+
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
    HWND hWnd;
@@ -237,127 +280,200 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	int wmId, wmEvent;
 	//PAINTSTRUCT ps;
 	//HDC hdc;
-
+	static int s1Pos, s1Min, s1Max;
+	//HWND scroll = NULL;
+	
 	switch (message)
 	{
-	case WM_CREATE:
-		CreateTextEditorWindow(hWnd, rect);
-		CreateSimpleToolbar(hWnd);
-		break;
-	case WM_COMMAND:
-		wmId = LOWORD(wParam);
-		wmEvent = HIWORD(wParam);
-		// Parse the menu selections:
-		switch (wmId)
+		case WM_CREATE:
 		{
-			//FILE
-		case ID_FILE_NEW:
-			New(hWnd, rect);
+			CreateTextEditorWindow(hWnd, rect);
+			CreateSimpleToolbar(hWnd);
+			CreateAVerticalScrollBar(hWnd, WIDTH_SCROOL);
 			break;
-		case ID_FILE_OPEN:	
-			Open(hWnd);
-			break;
-		case ID_FILE_SAVE:
-			Save(hWnd);
-			break;
-			//COLOR
-		case ID_COLOR_PEN:
-			break;
-			//FONT
-		case ID_FONT_FONT:
-			break;
-		case IDM_ABOUT:
-			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-			break;
-		case IDM_EXIT:
-			DestroyWindow(hWnd);
-			break;
-		default:
-			return DefWindowProc(hWnd, message, wParam, lParam);
 		}
-		break;
+		case WM_VSCROLL:
+		{
+					   
+			int nScrollCode = (int)LOWORD(wParam);
+			int nPos = (short int)HIWORD(wParam);
 
-	case WM_SYSKEYDOWN:
-		break;
-	case WM_SYSCHAR:
-		break;
-	case WM_CHAR:
-		switch (wParam)
-		{
-		case VK_HOME:case VK_END:case VK_PRIOR:
-		case VK_NEXT:case VK_LEFT:case VK_RIGHT:
-		case VK_UP:case VK_DOWN:case VK_DELETE:
-		case VK_SHIFT:case VK_CONTROL:
-		case VK_CAPITAL:case VK_MENU:case VK_TAB:
-		case VK_BACK:case VK_RETURN:
-			break;
-		default:
-			glyph_list.insert(CarriagePosition, new Char(size, font, wParam, color, false));
-			InvalidateRect(hWnd, NULL, true);
-			break;
+			GetScrollInfo(hWnd, SB_VERT, &si);
+			int nNewPos = si.nPos;
+			//SetScrollRange(hWnd, SB_VERT, 1, 20, FALSE);
+			switch (nScrollCode)
+			{
+				case SB_TOP:
+				{
+					nNewPos = 1;
+					break;
+				}
+				case SB_BOTTOM:
+				{
+					nNewPos = 20;
+					break;
+				}
+				case SB_LINEUP:
+				{
+					nNewPos -= 1;
+					//SetScrollPos(hWnd, SB_VERT, si.nPos, TRUE);
+					break;
+				}
+				case SB_LINEDOWN:
+				{
+					nNewPos += 1;
+					//SetScrollPos(hWnd, SB_VERT, si.nPos, TRUE);
+					break;
+				}
+					// Include code that checks for other values of nScrollCode.
+					// ...
+				case SB_THUMBPOSITION:
+				{
+					nNewPos = nPos + si.nMin; // Adding si.nMin is the workaround.
+					break;
+				}	
+			}
+			si.fMask = SIF_POS;
+			si.nPos = nNewPos;
+			int result = SetScrollInfo(hWnd, SB_VERT, &si, TRUE);
+			//int result = SetScrollPos(hWnd, SB_VERT, si.nPos, TRUE);
+			if (result == 0)
+				break;
 		}
-		break;
+		return TRUE;
 
-	case WM_KEYDOWN:	// Сообщение от клавиатуры
-		switch (wParam)
-		{
-		case VK_LEFT:				//left
-			if (CarriagePosition != ++glyph_list.begin())
+	
+
+		case WM_COMMAND:
+			wmId = LOWORD(wParam);
+			wmEvent = HIWORD(wParam);
+			// Parse the menu selections:
+			switch (wmId)
 			{
-				--CarriagePosition;
+				//FILE
+			case ID_FILE_NEW:
+				New(hWnd, rect);
+				break;
+			case ID_FILE_OPEN:	
+				Open(hWnd);
+				break;
+			case ID_FILE_SAVE:
+				Save(hWnd);
+				break;
+				//COLOR
+			case ID_FILE_PRINT:
+				Print(hWnd, rect.left, rect.right, rect.top, rect.bottom);
+				break;
+			case IDM_ABOUT:
+				DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+				break;
+			case IDM_EXIT:
+				DestroyWindow(hWnd);
+				break;
+			default:
+				return DefWindowProc(hWnd, message, wParam, lParam);
 			}
-			InvalidateRect(hWnd, NULL, true);
 			break;
-		case VK_RIGHT:				//right
-			if (CarriagePosition != glyph_list.end())
+
+		case WM_SYSKEYDOWN:
+			break;
+		case WM_SYSCHAR:
+			break;
+		case WM_CHAR:
+			switch (wParam)
 			{
-				++CarriagePosition;
-			}
-			InvalidateRect(hWnd, NULL, true);
-			break;
-		case VK_RETURN:				//enter
-			glyph_list.insert(CarriagePosition, new Char(-1, font, L'\r', color, true));
-			InvalidateRect(hWnd, NULL, true);
-			break;
-		case VK_UP:					//up
-			key_up(hWnd);
-			break;
-		case VK_DOWN:				//dowm
-			key_down(hWnd);
-			break;
-		case VK_LSHIFT:				//shift+left
-			break;
-		case VK_RSHIFT:				//shift+right
-			break;
-		case VK_DELETE:				// delete
-			int result_delete;
-			result_delete = delete_glyph(hWnd);
-			if (result_delete == 0)
-			{
-				++CarriagePosition;
+
+			case VK_RIGHT: 
+			case VK_DELETE: 
+			case VK_BACK: 
+			case VK_RETURN: 
+				break;
+			default:
+				glyph_list.insert(CarriagePosition, new Char(size, font, wParam, color, false));
 				InvalidateRect(hWnd, NULL, true);
+				break;
 			}
 			break;
-		case VK_BACK:				// backspace
-			int result_bacspace;
-			result_bacspace = backspace(hWnd);
-			if (result_bacspace == 0)
+
+		case WM_KEYDOWN:	// Сообщение от клавиатуры
+			switch (wParam)
 			{
-				++CarriagePosition;
+			case VK_LEFT:				//left
+			{
+				if (CarriagePosition != ++glyph_list.begin())
+				{
+					--CarriagePosition;
+				}
 				InvalidateRect(hWnd, NULL, true);
+				break;
 			}
-			break;
-		case VK_TAB:				//tab
-			glyph_list.insert(CarriagePosition, new Char(size, font, L'\t', color, true));
-			InvalidateRect(hWnd, NULL, true);
-			break;
-		default:
-			return DefWindowProc(hWnd, message, wParam, lParam);
-		}
+			case VK_RIGHT:				//right
+			{
+				if (CarriagePosition != glyph_list.end())
+				{
+					++CarriagePosition;
+				}
+				InvalidateRect(hWnd, NULL, true);
+				break;
+			}
+			case VK_RETURN:				//enter
+			{
+				glyph_list.insert(CarriagePosition, new Char(-1, font, L'\r', color, true));
+				InvalidateRect(hWnd, NULL, true);
+				break;
+			}
+				
+			case VK_UP:					//up
+			{
+				key_up(hWnd);
+				break;
+			}
+			case VK_DOWN:				//dowm
+			{
+				key_down(hWnd);
+				break;
+			}
+			case VK_LSHIFT:				//shift+left
+				break;
+			case VK_RSHIFT:				//shift+right
+				break;
+			case VK_DELETE:				// delete
+			{
+				int result_delete;
+				result_delete = delete_glyph(hWnd);
+				if (result_delete == 0)
+				{
+					++CarriagePosition;
+					InvalidateRect(hWnd, NULL, true);
+				}
+				break;
+			}
+			case VK_BACK:				// backspace
+			{
+				int result_bacspace;
+				result_bacspace = backspace(hWnd);
+				if (result_bacspace == 0)
+				{
+					++CarriagePosition;
+					InvalidateRect(hWnd, NULL, true);
+				}
+				break;
+			}
+			case VK_TAB:				//tab
+			{
+				insert_tab();
+				InvalidateRect(hWnd, NULL, true);
+				break;
+			}
+			
+			default:
+				return DefWindowProc(hWnd, message, wParam, lParam);
+			}
 		break;
 
 	case WM_SIZING:
 		repaintWindow(hWnd);
+		InvalidateRect(hWnd, NULL, true);
 		break;
 	case SW_MAXIMIZE:
 		repaintWindow(hWnd);
@@ -379,6 +495,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
 	return 0;
+	
 }
 
 // Message handler for about box.
@@ -433,7 +550,7 @@ VOID print_glyphs(HWND hWnd)
 		{
 			heightPositionCarret = count_string;
 			widthPositionCarret = summWidth;
-			SetCaretPos(summWidth, 45 + height);
+			SetCaretPos(summWidth, CORRECT_CARET_POSITION + height);
 		}
 	}
 	CarriagePosition++;
@@ -578,19 +695,17 @@ int backspace(HWND hWnd)
 void ToCreateCaret(HWND hWnd)
 {
 	CreateCaret(hWnd, (HBITMAP)0, 2, size + 2);
-	SetCaretPos(0, 45);
+	SetCaretPos(0, CORRECT_CARET_POSITION);
 	ShowCaret(hWnd);
 }
 
 void repaintWindow(HWND hWnd)
 {
-	
 	GetClientRect(hWnd, &rect);
 	heightWindow = rect.bottom - rect.top;
 	widthWindow = rect.right - rect.left;
 	print_glyphs(hWnd);
 }
-
 
 HFONT setFont(LPCWSTR font, int size){
 	 HFONT hFont = CreateFont(size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
@@ -621,9 +736,7 @@ HWND CreateTextEditorWindow(HWND hWnd, RECT rect)
 	ShowWindow(hWnd, SW_MAXIMIZE);
 	HDC hdc = GetDC(hWnd);
 	GetClientRect(hWnd, &rect);
-	//SetRect(&rect, 0, 16, 100, 100);
 	widthWindow = rect.right - rect.left;
-	//rect.top = 16;
 	heightWindow = rect.bottom - rect.top;
 	return hWnd;
 }
@@ -632,10 +745,9 @@ HWND New(HWND hWnd, RECT rect)
 {
 	font = setFont(L"Times New Roman", size);
 	glyph_list.clear();
-	InvalidateRect(hWnd, NULL, true);
-	ShowWindow(hWnd, SW_MAXIMIZE);
+	SetCaretPos(1, CORRECT_CARET_POSITION);
 	glyph_list.insert(CarriagePosition, new Char(-1, font, 0x0D, color, false));
-	SetCaretPos(0, 45);
+	InvalidateRect(hWnd, NULL, true);
 	return hWnd;
 }
 
@@ -681,6 +793,9 @@ WCHAR GetText(TCHAR *lpszText, DWORD size)
 	return *lpszText;
 }
 
+DWORD nBytesRead;
+CHAR *lpBuffer;
+
 int Open(HWND hWnd)
 {
 	New(hWnd, rect);
@@ -709,9 +824,9 @@ int Open(HWND hWnd)
 			MessageBox(hWnd, __TEXT("Ошибка открытия файла"), __TEXT("Ошибка! "), MB_OK | MB_ICONSTOP);
 			return 0;
 		}
-		DWORD SizeFile = GetFileSize(hFile, NULL), buffer = NULL;//Получить размер файла 
-		TCHAR lpBuffer[6]{NULL};
-		bool result = ReadFile(hFile, (LPVOID)lpBuffer, SizeFile, (LPDWORD)buffer, NULL);
+		DWORD SizeFile = GetFileSize(hFile, NULL);//Получить размер файла 
+		
+		bool result = ReadFile(hFile, lpBuffer, SizeFile, &nBytesRead, NULL);
 		if (result == false)
 		{
 			MessageBox(hWnd, __TEXT("Ошибка чтения файла! "), __TEXT("") + GetLastError(), MB_OK | MB_ICONSTOP);
@@ -727,4 +842,60 @@ int Open(HWND hWnd)
 	
 	InvalidateRect(hWnd, NULL, true);
 	return 0;
+}
+HBITMAP hbmMem;
+HANDLE hOld;
+
+void Print(HWND h, int x1, int x2, int y1, int y2)
+{
+	int scale = 1;
+	double coef = 0.5;
+	ZeroMemory(&pd, sizeof(pd));
+	pd.lStructSize = sizeof(pd);
+	pd.hwndOwner = h;
+	pd.hDevMode = NULL;
+	pd.hDevNames = NULL;
+	pd.Flags = PD_USEDEVMODECOPIESANDCOLLATE | PD_RETURNDC;
+	pd.nCopies = 1;
+	pd.nFromPage = 1;
+	pd.nToPage = 1;
+	pd.nMinPage = 1;
+	pd.nMaxPage = 1;
+	if (PrintDlg(&pd) == TRUE)
+	{
+		int Rx = GetDeviceCaps(pd.hDC, LOGPIXELSX);
+		int Ry = GetDeviceCaps(pd.hDC, LOGPIXELSY);
+		di.cbSize = sizeof(DOCINFO);
+		di.lpszDocName = L"Print text";
+		di.fwType = NULL;
+		di.lpszDatatype = NULL;
+		di.lpszOutput = NULL;
+		StartDoc(pd.hDC, &di);
+		StartPage(pd.hDC);
+		GetClientRect(h, &rect);
+
+		SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
+		SelectObject(hdc, (HPEN)GetStockObject(BLACK_PEN));
+		Rectangle(hdc, 0, 0, (int)(rect.right*scale), (int)(rect.bottom*scale));
+		//pd.TextOut(50, 50, _T("Hello World!"), 12);
+
+		
+		EndPage(pd.hDC);
+		EndDoc(pd.hDC);
+		DeleteDC(hdc);
+		DeleteDC(pd.hDC);
+	}
+}
+
+bool keydown(int key)
+{
+	return (GetAsyncKeyState(key) & 0x8000) != 0;
+}
+
+void insert_tab()
+{
+	glyph_list.insert(CarriagePosition, new Char(size, font, L' ', color, true));
+	glyph_list.insert(CarriagePosition, new Char(size, font, L' ', color, true));
+	glyph_list.insert(CarriagePosition, new Char(size, font, L' ', color, true));
+	glyph_list.insert(CarriagePosition, new Char(size, font, L' ', color, true));
 }
