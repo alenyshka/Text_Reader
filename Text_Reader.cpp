@@ -1,6 +1,8 @@
 // Text_Reader.cpp : Defines the entry point for the application.
 //
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "stdafx.h"
 #include "Text_Reader.h"
 #include <CommDlg.h>
@@ -13,15 +15,19 @@
 #include "Char.h"
 #include <vector>
 #include "Commctrl.h"
-#include <iostream>
 #include <fstream>
+#include <iostream>
+#include <winddi.h>
+#include <fcntl.h> 
+
+
 
 #pragma comment (lib, "comctl32.lib")
 
 #define MAX_LOADSTRING 100
 #define CORRECT_CARET_POSITION 45
 #define WIDTH_SCROOL 20
-
+#define SIZE 20
 
 
 void key_up(HWND hWnd);
@@ -32,7 +38,8 @@ void repaintWindow(HWND hWnd);
 int	getWindowWidth(HWND hWnd);
 int	getWindowHeight(HWND hWnd);
 HWND CreateTextEditorWindow(HWND, RECT);
-WCHAR GetText(TCHAR *lpszText, DWORD size);
+wchar_t GetTextFromList(wchar_t *text, int size);
+void GetListFromText(wchar_t *text, int size);
 bool keydown(int key);
 void insert_tab();
 
@@ -55,12 +62,12 @@ void Print(HWND h, int x1, int x2, int y1, int y2);
 HINSTANCE hInst;								// current instance
 TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
 TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
-
-int	wmId, wmEvent, size = 20, heightPositionCarret = 0, count_string = 0, widthPositionCarret = 0, widthWindow, heightWindow;
+static HIMAGELIST g_hImageList = NULL;			//for toolbar
+int	wmId, wmEvent, heightPositionCarret = 0, count_string = 0, widthPositionCarret = 0, widthWindow, heightWindow;
 HDC static hdc;
 
 static OPENFILENAME ofn;
-static HFONT font = CreateFont(size, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
+static HFONT font = CreateFont(SIZE, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
 	CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, VARIABLE_PITCH, TEXT("Times New Roman"));
 static char fullpath[256], filename[256], dir[256];
 
@@ -131,7 +138,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 //  PURPOSE: Registers the window class.
 //
 
-static HIMAGELIST g_hImageList = NULL;
+
 
 HWND CreateSimpleToolbar(HWND hWndParent)
 {
@@ -173,7 +180,7 @@ HWND CreateSimpleToolbar(HWND hWndParent)
 		{ MAKELONG(STD_FILEOPEN, ImageListID), ID_FILE_OPEN, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"Open" },
 		{ MAKELONG(STD_FILESAVE, ImageListID), ID_FILE_SAVE, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"Save" },
 		{ MAKELONG(STD_PRINT, ImageListID), ID_FILE_PRINT, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"Print" },
-		{ MAKELONG(STD_HELP, ImageListID), IDM_ABOUT, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"Help" }
+		{ MAKELONG(STD_HELP, ImageListID), IDM_ABOUT, TBSTATE_ENABLED, buttonStyles, { 0 }, 0, (INT_PTR)L"About " }
 	};
 
 	// Add buttons.
@@ -360,10 +367,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			case ID_FILE_SAVE:
 				Save(hWnd);
 				break;
-				//COLOR
+
 			case ID_FILE_PRINT:
+			{
 				Print(hWnd, rect.left, rect.right, rect.top, rect.bottom);
+				ShowCaret(hWnd);
 				break;
+			}
 			case IDM_ABOUT:
 				DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 				break;
@@ -389,7 +399,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			case VK_RETURN: 
 				break;
 			default:
-				glyph_list.insert(CarriagePosition, new Char(size, font, wParam, color, false));
+				glyph_list.insert(CarriagePosition, new Char(SIZE, font, wParam, color, false));
 				InvalidateRect(hWnd, NULL, true);
 				break;
 			}
@@ -418,7 +428,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 			case VK_RETURN:				//enter
 			{
-				glyph_list.insert(CarriagePosition, new Char(-1, font, L'\r', color, true));
+				glyph_list.insert(CarriagePosition, new Char(-1, font, L'\n', color, true));
 				InvalidateRect(hWnd, NULL, true);
 				break;
 			}
@@ -694,7 +704,7 @@ int backspace(HWND hWnd)
 
 void ToCreateCaret(HWND hWnd)
 {
-	CreateCaret(hWnd, (HBITMAP)0, 2, size + 2);
+	CreateCaret(hWnd, (HBITMAP)0, 2, SIZE + 2);
 	SetCaretPos(0, CORRECT_CARET_POSITION);
 	ShowCaret(hWnd);
 }
@@ -717,7 +727,6 @@ HFONT setFont(LPCWSTR font, int size){
 int getWindowWidth(HWND hWnd)
 {
 	GetClientRect(hWnd, &rect);
-	//SetRect(&rect, 0, 16, 100, 100);
 	return rect.right - rect.left;
 }
 
@@ -730,7 +739,7 @@ int getWindowHeight(HWND hWnd)
 
 HWND CreateTextEditorWindow(HWND hWnd, RECT rect)
 {
-	font = setFont(L"Times New Roman", size);
+	font = setFont(L"Times New Roman", SIZE);
 	CarriagePosition = glyph_list.begin();
 	glyph_list.insert(CarriagePosition, new Char(-1, font, 0x0D, color, false));
 	ShowWindow(hWnd, SW_MAXIMIZE);
@@ -743,7 +752,7 @@ HWND CreateTextEditorWindow(HWND hWnd, RECT rect)
 
 HWND New(HWND hWnd, RECT rect)
 {
-	font = setFont(L"Times New Roman", size);
+	font = setFont(L"Times New Roman", SIZE);
 	glyph_list.clear();
 	SetCaretPos(1, CORRECT_CARET_POSITION);
 	glyph_list.insert(CarriagePosition, new Char(-1, font, 0x0D, color, false));
@@ -768,29 +777,57 @@ void Save(HWND hWnd)
 	ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY | OFN_EXPLORER;
 	if (GetSaveFileName(&ofn))
 	{
-		DWORD dwTextSize = glyph_list.size();
-		TCHAR *lpszText = new TCHAR[dwTextSize]{NULL};
-		*lpszText = GetText(lpszText, dwTextSize + 1);
-		
-		HANDLE hTextFile = CreateFile((LPWSTR)fullpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		DWORD dwBytesWritten;
-		WriteFile(hTextFile, (LPCVOID)lpszText, 2 * dwTextSize, &dwBytesWritten, NULL);  // x2 for 2 bytes per Unicode character
-		CloseHandle(hTextFile);
-		DeleteObject(hTextFile);
+		int size = glyph_list.size() - 1;
+		wchar_t *text = new wchar_t[size]{NULL};
+		//wchar_t *text;
+		//text = (wchar_t *)calloc(size, sizeof(wchar_t));
+		*text = GetTextFromList(text, size);
+		FILE* outFile;
+		_wfopen_s(&outFile, (LPWSTR)fullpath, L"w+,ccs=UTF-16LE");
+		fwrite((char*)text, sizeof(wchar_t), size, outFile);
+		fclose(outFile);
 	}
 }
 
-WCHAR GetText(TCHAR *lpszText, DWORD size)
+wchar_t GetTextFromList(wchar_t *text, int size)
 {
 	std::list<Glyph*>::iterator itemList = glyph_list.begin();
 	int i = 0;
 	while (!(++itemList == glyph_list.end()))
 	{
-		Glyph * symbol = *itemList;
-		lpszText[i++] = (TCHAR)(symbol);
-		
+		Glyph * glyph = *itemList;
+		text[i++] = glyph->getSymbol();//&&SO_GLYPHINDEX_TEXTOUT;//		(*((Char*)(symbol))).symbol	//	wchar_t SO_GLYPHINDEX_TEXTOUT
 	}
-	return *lpszText;
+	return *text;
+}
+
+void GetListFromText(wchar_t *text, int size)
+{
+	glyph_list.clear();
+	bool flag = true;
+	std::list<Glyph*>::iterator itemList = glyph_list.begin();
+	int i = 0;
+	Glyph * symbol = new Char(SIZE, font, L' ', color, false);
+	glyph_list.insert(CarriagePosition, symbol);
+	while (i < size)
+	{
+		if (text[i] == L'\n')
+		{
+			glyph_list.insert(CarriagePosition, new Char(-1, font, L'\n', color, true));	
+			if (flag == true)
+			{
+				size -= 2;
+				flag = false;
+			}
+			else
+				size--;
+		}
+		else
+		{
+			glyph_list.insert(CarriagePosition, new Char(SIZE, font, text[i], color, false));
+		}
+		i++;
+	}
 }
 
 DWORD nBytesRead;
@@ -813,7 +850,6 @@ int Open(HWND hWnd)
 	ofn.lpstrInitialDir = (LPCWSTR)dir;
 	ofn.lpstrTitle = __TEXT("Open...");
 	ofn.lpstrDefExt = __TEXT("txt");//расширение по умолчанию 
-	//ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY | OFN_EXPLORER;
 	if (GetOpenFileName(&ofn))
 	{
 		HANDLE hFile = CreateFile((LPWSTR)fullpath, GENERIC_READ, 0, NULL, OPEN_EXISTING,//Открытие файла 
@@ -824,22 +860,21 @@ int Open(HWND hWnd)
 			MessageBox(hWnd, __TEXT("Ошибка открытия файла"), __TEXT("Ошибка! "), MB_OK | MB_ICONSTOP);
 			return 0;
 		}
-		DWORD SizeFile = GetFileSize(hFile, NULL);//Получить размер файла 
-		
-		bool result = ReadFile(hFile, lpBuffer, SizeFile, &nBytesRead, NULL);
-		if (result == false)
-		{
-			MessageBox(hWnd, __TEXT("Ошибка чтения файла! "), __TEXT("") + GetLastError(), MB_OK | MB_ICONSTOP);
-			return -1;
-		}
+		int SizeFile = GetFileSize(hFile, NULL);//Получить размер файла 
 		CloseHandle(hFile);
-		for (int i = 0; i < SizeFile; i++)
-		{
-			glyph_list.insert(CarriagePosition, new Char(size, font, lpBuffer[i], color, false));
-		}
-	}
 
-	
+		wchar_t *text = new wchar_t[SizeFile /sizeof(wchar_t)]{L''};
+		wchar_t line;
+		int i = 0;
+		FILE* outFile;
+		if (_wfopen_s(&outFile, (LPWSTR)fullpath, L"r+,ccs=UTF-16LE") == 0)
+		{
+			fread_s(text, SizeFile, sizeof(wchar_t), SizeFile / sizeof(wchar_t), outFile);
+			fclose(outFile);
+		}
+		glyph_list.clear();
+		GetListFromText(text, SizeFile / sizeof(wchar_t));
+	}
 	InvalidateRect(hWnd, NULL, true);
 	return 0;
 }
@@ -857,35 +892,39 @@ void Print(HWND h, int x1, int x2, int y1, int y2)
 	pd.hDevNames = NULL;
 	pd.Flags = PD_USEDEVMODECOPIESANDCOLLATE | PD_RETURNDC;
 	pd.nCopies = 1;
-	pd.nFromPage = 1;
-	pd.nToPage = 1;
+	pd.nFromPage = 0xFFFF;
+	pd.nToPage = 0xFFFF;
 	pd.nMinPage = 1;
-	pd.nMaxPage = 1;
+	pd.nMaxPage = 0xFFFF;
+	POINTS point;
+
 	if (PrintDlg(&pd) == TRUE)
 	{
-		int Rx = GetDeviceCaps(pd.hDC, LOGPIXELSX);
-		int Ry = GetDeviceCaps(pd.hDC, LOGPIXELSY);
+
+		int Rx = GetDeviceCaps(pd.hDC, HORZRES);
+		int Ry = GetDeviceCaps(pd.hDC, VERTRES);
+
 		di.cbSize = sizeof(DOCINFO);
 		di.lpszDocName = L"Print text";
 		di.fwType = NULL;
 		di.lpszDatatype = NULL;
 		di.lpszOutput = NULL;
 		StartDoc(pd.hDC, &di);
+
 		StartPage(pd.hDC);
 		GetClientRect(h, &rect);
+		HDC hdc = GetDC(h);
+		HideCaret(h);
+		StretchBlt(pd.hDC, 0, 0, Rx, Ry, hdc, 0, 43, rect.right - 500, rect.bottom, SRCCOPY);
 
-		SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
-		SelectObject(hdc, (HPEN)GetStockObject(BLACK_PEN));
-		Rectangle(hdc, 0, 0, (int)(rect.right*scale), (int)(rect.bottom*scale));
-		//pd.TextOut(50, 50, _T("Hello World!"), 12);
-
-		
 		EndPage(pd.hDC);
 		EndDoc(pd.hDC);
 		DeleteDC(hdc);
 		DeleteDC(pd.hDC);
+		
 	}
 }
+
 
 bool keydown(int key)
 {
@@ -894,8 +933,8 @@ bool keydown(int key)
 
 void insert_tab()
 {
-	glyph_list.insert(CarriagePosition, new Char(size, font, L' ', color, true));
-	glyph_list.insert(CarriagePosition, new Char(size, font, L' ', color, true));
-	glyph_list.insert(CarriagePosition, new Char(size, font, L' ', color, true));
-	glyph_list.insert(CarriagePosition, new Char(size, font, L' ', color, true));
+	glyph_list.insert(CarriagePosition, new Char(SIZE, font, L' ', color, true));
+	glyph_list.insert(CarriagePosition, new Char(SIZE, font, L' ', color, true));
+	glyph_list.insert(CarriagePosition, new Char(SIZE, font, L' ', color, true));
+	glyph_list.insert(CarriagePosition, new Char(SIZE, font, L' ', color, true));
 }

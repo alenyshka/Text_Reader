@@ -13,6 +13,7 @@ class Bitmap : public Glyph
 		virtual int getHeight();
 		virtual int getWidth();
 		virtual HDC draw(HDC hdc, int x0, int y0);
+		virtual wchar_t getSymbol();
 /*		virtual VOID setSymbol(char c);
 		virtual HDC setSize(HDC hdc, int size);
 		virtual HDC setColor(HDC hdc, COLORREF rgb);
