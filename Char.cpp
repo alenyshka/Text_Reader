@@ -29,14 +29,9 @@ int Char::getWidth()
 {
 	return width;
 }
-wchar_t Char::getSymbol(){
-	return symbol;
-}
 
 int Char::getHeight()
 {
-	if (symbol == L'\n')
-		return 21;
 	return height;
 }
 //bool SetStateNewLine(bool state)

@@ -11,11 +11,12 @@ public:
 
 	virtual int getHeight();
 	virtual int getWidth(); 
+	//bool SetStateNewLine(bool state);
 	virtual HDC draw(HDC hdc, int x0, int y0, HFONT font);
-	virtual wchar_t getSymbol();
 
 private:
 	void computeRect();
+
 	int height, width, loupe, size;
 	bool state;
 	wchar_t symbol;

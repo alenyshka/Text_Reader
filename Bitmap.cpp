@@ -21,10 +21,6 @@ int Bitmap::getWidth(){
 HDC Bitmap::draw(HDC hdc, int x0, int y0){
 	return hdc;
 };
-
-wchar_t Bitmap::getSymbol(){
-	return L'';
-}
 /*
 VOID setSymbol(char c){
 	return;
