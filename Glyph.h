@@ -7,11 +7,8 @@ public:
 	virtual ~Glyph() {}
 	virtual int getHeight()=0;
 	virtual int getWidth()=0;
+	virtual wchar_t getSymbol() = NULL;
 	virtual HDC draw(HDC hDc, int x0, int y0, HFONT font) = 0;
-	/*const type_info &getType()
-	{
-		return typeid(this);
-	}*/
 };
 
 #endif

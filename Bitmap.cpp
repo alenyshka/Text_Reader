@@ -10,30 +10,21 @@ Bitmap::~Bitmap(void)
 {
 }
 		
-int Bitmap::getHeight(){
+int Bitmap::getHeight()
+{
 	return this->height;
 }
 
-int Bitmap::getWidth(){
+int Bitmap::getWidth()
+{
 	return this->width;
 }
 
-HDC Bitmap::draw(HDC hdc, int x0, int y0){
+HDC Bitmap::draw(HDC hdc, int x0, int y0)
+{
 	return hdc;
 };
-/*
-VOID setSymbol(char c){
-	return;
-}
 
-HDC setSize(HDC hdc, int size){
-	return hdc;
+wchar_t Bitmap::getSymbol(){
+	return L'';
 }
-
-HDC setColor(HDC hdc, COLORREF rgb){
-	return hdc;
-}
-
-HDC setFont(HDC hdc, HFONT font){
-	return hdc;
-}*/
